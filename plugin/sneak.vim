@@ -150,6 +150,11 @@ func! sneak#to(op, input, inputlen, count, repeatmotion, reverse, inclusive, lab
     let s.match_pattern .= l:match_bounds
   endif
 
+  " Scope the search to what we can see
+  let l:top = max([0, line('w0')-2])
+  let l:bot = line('w$')+2
+  let l:restrict_top_bot = '\%>'.l:top.'l\%<'.l:bot.'l'
+
   "TODO: refactor vertical scope calculation into search.vim,
   "      so this can be done in s.init() instead of here.
   call s.initpattern()
@@ -164,20 +169,29 @@ func! sneak#to(op, input, inputlen, count, repeatmotion, reverse, inclusive, lab
     call s:ft_hook()
   endif
 
-  let nextchar = searchpos('\_.', 'n'.(s.search_options_no_s))
+  let nextchar = searchpos('\_.', 'n'.(s.searchoptions(0, 1)))
   let nudge = !a:inclusive && a:repeatmotion && nextchar == s.dosearch('n')
   if nudge
     let nudge = sneak#util#nudge(!a:reverse) "special case for t
   endif
 
-  for i in range(1, max([1, skip])) "jump to the [count]th match
-    let matchpos = s.dosearch()
+  let opposite = 0
+  let w = winsaveview()
+  let toskip = skip
+  while toskip >= 0
+    let matchpos = s.dosearch(opposite ? 'b' : '')
     if 0 == max(matchpos)
-      break
+      if opposite
+        break
+      else
+        let opposite = 1
+        call winrestview(w)
+      endif
     else
+      let toskip = toskip - 1
       let nudge = !a:inclusive
     endif
-  endfor
+  endwhile
 
   if nudge && (!is_v || max(matchpos) > 0)
     call sneak#util#nudge(a:reverse) "undo nudge for t
@@ -198,12 +212,9 @@ func! sneak#to(op, input, inputlen, count, repeatmotion, reverse, inclusive, lab
   endif
 
   "Might as well scope to window height (+/- 99).
-  let l:top = max([0, line('w0')-99])
-  let l:bot = line('w$')+99
-  let l:restrict_top_bot = '\%'.l:gt_lt.curlin.'l\%>'.l:top.'l\%<'.l:bot.'l'
   let l:scope_pattern .= l:restrict_top_bot
   let s.match_pattern .= l:restrict_top_bot
-  let curln_pattern  = l:match_bounds.'\%'.curlin.'l\%'.l:gt_lt.curcol.'v'
+  let curln_pattern  = l:match_bounds.'\%'.l:gt_lt.curcol.'v'
 
   "highlight the vertical 'tunnel' that the search is scoped-to
   if max(bounds) "perform the scoped highlight...

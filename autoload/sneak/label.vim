@@ -44,13 +44,19 @@ func! s:do_label(s, v, reverse, label) abort "{{{
 
   let i = 0
   let overflow = [0, 0] "position of the next match (if any) after we have run out of target labels.
+  let opposite = 0
   while 1
     " searchpos() is faster than 'norm! /'
-    let p = searchpos(search_pattern, a:s.search_options_no_s, a:s.get_stopline())
-    let skippedfold = sneak#util#skipfold(p[0], a:reverse) "Note: 'set foldopen-=search' does not affect search().
+    let p = searchpos(search_pattern, a:s.searchoptions(opposite, 1), a:s.get_stopline(opposite))
+    let skippedfold = sneak#util#skipfold(p[0], opposite ? a:reverse : !a:reverse) "Note: 'set foldopen-=search' does not affect search().
 
     if 0 == p[0] || -1 == skippedfold
-      break
+      if opposite
+        break
+      else
+        call winrestview(w)
+        let opposite = 1
+      endif
     elseif 1 == skippedfold
       continue
     endif

@@ -13,14 +13,24 @@ func! sneak#search#new() abort
     "          matchadd('foo', 'ab\%>42l\%5c', 1)
     let self.match_pattern = ''
     " do not wrap                     search backwards
-    let self._search_options = 'W' . (a:reverse ? 'b' : '')
-    let self.search_options_no_s = self._search_options
-    " save the jump on the initial invocation, _not_ repeats or consecutive invocations.
-    if !a:repeatmotion && !sneak#is_sneaking() | let self._search_options .= 's' | endif
+    let self._search_options = self.searchoptions(0, a:repeatmotion)
+  endf
+
+  func! s.searchoptions(isOpposite, isRepeating)
+    let op = 'W'
+    let backward = !self._reverse != !a:isOpposite
+    if backward
+      let op = op . 'b'
+    endif
+    if !a:isRepeating && !sneak#is_sneaking()
+      let op = op . 's'
+    endif
+    return op
   endf
 
   func! s.initpattern() abort
-    let self._searchpattern = (self.prefix).(self.match_pattern).'\zs'.(self.search)
+    let l:vertbounds =('\%>' . max([0, line('w0') - 2]) . 'l\%<' . (line('w$') + 2) . 'l')
+    let self._searchpattern = (self.prefix) . l:vertbounds . (self.match_pattern).'\zs'.(self.search)
   endf
 
   func! s.dosearch(...) abort " a:1 : extra search options
@@ -37,11 +47,12 @@ func! sneak#search#new() abort
     let wincol_lhs = a:w.leftcol "this is actually just to the _left_ of the first onscreen column.
     let wincol_rhs  = 2 + (winwidth(0) - sneak#util#wincol1()) + wincol_lhs
     "restrict search to window
-    return '\%>'.(wincol_lhs).'v'.'\%<'.(wincol_rhs+1).'v'
+    return '\%>'.(wincol_lhs).'v'.'\%<'.(wincol_rhs+1).'v'. '\%>' . max([0, line('w0') - 2]) . 'l\%<' . line('w$') + 2
   endf
 
-  func! s.get_stopline() abort
-    return self._reverse ? line("w0") : line("w$")
+  func! s.get_stopline(...) abort
+    let opposite = a:0 && a:1 ? 1 : 0
+    return !!self._reverse != opposite ? line("w0") : line("w$")
   endf
 
   " returns 1 if there are n _on-screen_ matches in the search direction.
@@ -50,10 +61,16 @@ func! sneak#search#new() abort
     let searchpattern = (self._searchpattern).(self.get_onscreen_searchpattern(w))
     let visiblematches = 0
 
+    let opposite = 0
     while 1
-      let matchpos = searchpos(searchpattern, self.search_options_no_s, self.get_stopline())
+      let matchpos = searchpos(searchpattern, self.searchoptions(opposite, 1), self.get_stopline())
       if 0 == matchpos[0] "no more matches
-        break
+        if opposite
+          break
+        else
+          let opposite = 1
+          call winrestview(w)
+        endif
       elseif 0 != sneak#util#skipfold(matchpos[0], self._reverse)
         continue
       endif
